@@ -5,40 +5,36 @@
   Two PowerShell scripts that work together to repair driver state on freshly
   imaged Surface prototypes:
 
-      PULL_DRIVERS_C2.ps1    Pre-populate a local driver repo from a UNC share
-      DRIVER_FIXER_C4.ps1    On-device driver remediation (WU + MUC + _local)
+      PULL_DRIVERS.ps1    Pre-populate a local driver repo from a UNC share
+      DRIVER_FIXER.ps1    On-device driver remediation (WU + MUC + _local)
 
   Both expect to live at the root of the same USB. Typical layout:
 
       F:\
-        DRIVER_FIXER_C4.ps1
-        PULL_DRIVERS_C2.ps1
+        DRIVER_FIXER.ps1
+        PULL_DRIVERS.ps1
         _network\          NIC/WiFi INFs for audit-mode bootstrap (you stage)
         _local\            Curated INF tree (you stage + script auto-fills)
         _catalog\          Per-HWID cab cache (auto)
         DriverLog.csv      Cumulative install log (auto)
 
-  RUN THIS FIRST:
-
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-
 
 ================================================================================
-  PULL_DRIVERS_C2.ps1
+  PULL_DRIVERS.ps1
 ================================================================================
 
 NAME
-    PULL_DRIVERS_C2  --  copy driver packages from a share into a local tree
+    PULL_DRIVERS  --  copy driver packages from a share into a local tree
 
 SYNOPSIS
-    .\PULL_DRIVERS_C2.ps1 -Source <path> -Destination <path>
-                          [-DryRun] [-SkipExisting] [-IncludeSize]
+    .\PULL_DRIVERS.ps1 -Source <path> -Destination <path>
+                       [-DryRun] [-SkipExisting] [-IncludeSize]
 
 DESCRIPTION
-    Walks a source tree (typically a UNC path to a build share like 766_MIS
-    on desmo) for *.inf files. For each unique driver package (folder that
-    contains an INF), copies the WHOLE folder and its descendants to the
-    destination at the mirrored relative path.
+    Walks a source tree (typically a UNC path to a build share) for *.inf
+    files. For each unique driver package (folder that contains an INF),
+    copies the WHOLE folder and its descendants to the destination at the
+    mirrored relative path.
 
     Copying the whole folder is intentional: a working driver package needs
     the .cat (signature), .sys (binary), .dll, and firmware blobs (.bin/.hex
@@ -55,7 +51,7 @@ DESCRIPTION
 PARAMETERS
     -Source <string>        REQUIRED.
         Source root. Usually a UNC path.
-        E.g.  \\desmo\WDS\Devices\766_MIS\SWFW\N1x_BSP_v0.7
+        E.g.  \\server\share\<codename>\Drivers
 
     -Destination <string>   REQUIRED.
         Local destination. Usually the _local folder on your USB.
@@ -88,16 +84,16 @@ NOTES
 
 EXAMPLES
     # Dry-run first to see the shape of what would be copied
-    .\PULL_DRIVERS_C2.ps1 -Source \\desmo\766_MIS\Grendel `
-                          -Destination F:\_local -DryRun
+    .\PULL_DRIVERS.ps1 -Source \\server\share\<codename> `
+                       -Destination F:\_local -DryRun
 
     # Actual pull
-    .\PULL_DRIVERS_C2.ps1 -Source \\desmo\766_MIS\Grendel `
-                          -Destination F:\_local
+    .\PULL_DRIVERS.ps1 -Source \\server\share\<codename> `
+                       -Destination F:\_local
 
     # Resume after a flaky connection dropped halfway through
-    .\PULL_DRIVERS_C2.ps1 -Source \\desmo\766_MIS\Grendel `
-                          -Destination F:\_local -SkipExisting
+    .\PULL_DRIVERS.ps1 -Source \\server\share\<codename> `
+                       -Destination F:\_local -SkipExisting
 
 EXIT BEHAVIOR
     The script does not set an explicit exit code. Check the summary block
@@ -111,15 +107,15 @@ EXIT BEHAVIOR
 
 
 ================================================================================
-  DRIVER_FIXER_C4.ps1
+  DRIVER_FIXER.ps1
 ================================================================================
 
 NAME
-    DRIVER_FIXER_C4  --  one-shot post-imaging driver remediation
+    DRIVER_FIXER  --  one-shot post-imaging driver remediation
 
 SYNOPSIS
-    .\DRIVER_FIXER_C4.ps1 [-AutoReboot] [-Passes <int>] [-MaxCacheMB <int>]
-                          [-SkipMU] [-SurfaceHint <string>]
+    .\DRIVER_FIXER.ps1 [-AutoReboot] [-Passes <int>] [-MaxCacheMB <int>]
+                       [-SkipMU] [-SurfaceHint <string>]
 
 DESCRIPTION
     Runs five phases against the current machine to resolve "yellow bang"
@@ -145,10 +141,10 @@ DESCRIPTION
         reuse). Downloaded cabs are extracted into _local\<hwid>\ so the
         repo grows organically.
 
-        NEW IN C4: if a "{GUID}\Name" HWID returns no MUC hits, the
-        script retries with the suffix alone. MUC indexes Surface SMF /
-        SAM / battery / telemetry drivers by friendly name, not by the
-        device-interface-class GUID.
+        If a "{GUID}\Name" HWID returns no MUC hits, the script retries
+        with the suffix alone. MUC indexes Surface SMF / SAM / battery /
+        telemetry drivers by friendly name, not by the device-interface-
+        class GUID.
 
     Phase 3 -- Surface-likely driver packs
         Heuristic: decides whether this is a Surface chassis from
@@ -213,18 +209,17 @@ NOTES
     Administrator.
 
     Expected USB layout:
-        DRIVER_FIXER_C4.ps1   (this script)
-        PULL_DRIVERS_C2.ps1   (companion puller)
+        DRIVER_FIXER.ps1      (this script)
+        PULL_DRIVERS.ps1      (companion puller)
         _network\             Pre-staged NIC/WiFi INFs for audit bootstrap.
                               Seed with: Intel I225/I226, Realtek RTL8xxx,
                               Killer, Intel WiFi 6/6E/7, Qualcomm/Atheros,
                               Mediatek.
         _local\               Curated driver repo. Seed with vendor packs
                               (Intel chipset/ME, Realtek audio, Surface
-                              MSIs from 766_MIS, AMD chipset, etc.).
-                              Recursive INF tree -- pnputil match-and-
-                              install handles selection. Phase 2 also
-                              writes into here.
+                              MSIs, AMD chipset, etc.). Recursive INF tree
+                              -- pnputil match-and-install handles
+                              selection. Phase 2 also writes into here.
         _catalog\             Auto. Per-HWID cab cache. Survives across
                               runs and machines.
         DriverLog.csv         Auto. Cumulative install log across all
@@ -244,19 +239,19 @@ NOTES
 
 EXAMPLES
     # Standard run -- usually all you need
-    .\DRIVER_FIXER_C4.ps1
+    .\DRIVER_FIXER.ps1
 
     # Same, but reboot automatically if anything asks
-    .\DRIVER_FIXER_C4.ps1 -AutoReboot
+    .\DRIVER_FIXER.ps1 -AutoReboot
 
     # Offline triage -- skip MU, just hit _catalog and _local
-    .\DRIVER_FIXER_C4.ps1 -SkipMU
+    .\DRIVER_FIXER.ps1 -SkipMU
 
     # Force Phase 3 to try a specific Surface SKU first
-    .\DRIVER_FIXER_C4.ps1 -SurfaceHint "Surface Laptop 4"
+    .\DRIVER_FIXER.ps1 -SurfaceHint "Surface Laptop 4"
 
     # Be aggressive: 4 WU passes, larger cache, auto-reboot
-    .\DRIVER_FIXER_C4.ps1 -Passes 4 -MaxCacheMB 500 -AutoReboot
+    .\DRIVER_FIXER.ps1 -Passes 4 -MaxCacheMB 500 -AutoReboot
 
 EXIT BEHAVIOR
     No explicit exit code. Check the Phase 5 report:
@@ -280,14 +275,14 @@ EXIT BEHAVIOR
        /ME, Realtek audio, etc.).
 
   PER BUILD / SKU  (from your workstation, while you have share access)
-    4. Pull the SKU-specific driver tree from desmo:
-           .\PULL_DRIVERS_C2.ps1 -Source \\desmo\766_MIS\<codename> `
-                                 -Destination F:\_local -DryRun
+    4. Pull the SKU-specific driver tree from the build share:
+           .\PULL_DRIVERS.ps1 -Source \\server\share\<codename> `
+                              -Destination F:\_local -DryRun
        Review the dry-run, then re-run without -DryRun.
 
   PER MACHINE  (on the freshly imaged device)
     5. Plug the USB in. Open PowerShell as Administrator. Run:
-           .\DRIVER_FIXER_C4.ps1
+           .\DRIVER_FIXER.ps1
     6. Read the Phase 5 report. If devices remain, look at the per-
        device HWID + MUC URL and either:
          - Manually pull and drop into _local\, then re-run
@@ -303,21 +298,11 @@ EXIT BEHAVIOR
   FAQ / TROUBLESHOOTING
 ================================================================================
 
-  Q: PULL_DRIVERS errors with "Substring: startIndex cannot be larger
-     than length of string" against a UNC source.
-  A: That's the C1 bug. Use C2 -- it switched Resolve-Path .Path
-     (provider-prefixed on UNC) to .ProviderPath (bare).
-
-  Q: Phase 2 keeps failing on Surface SMF / battery / telemetry
-     drivers with "Unresolved at HWID/Catalog".
-  A: You're on C3 or older. C4 retries the search with the GUID prefix
-     stripped, which is how MUC actually indexes those entries.
-
   Q: Phase 4 says "_local not present -- skipping".
   A: Either the folder really isn't there, or the script isn't running
      from the USB root. Confirm $PSScriptRoot resolves to F:\ (or
      wherever the USB is mounted) by running the script from that path
-     directly: cd F:\ ; .\DRIVER_FIXER_C4.ps1
+     directly: cd F:\ ; .\DRIVER_FIXER.ps1
 
   Q: Network is unreachable in audit mode even after Phase 0 NIC
      injection.
@@ -336,3 +321,19 @@ EXIT BEHAVIOR
      and a second pass often resolves dependencies the first pass
      unlocked (e.g., chipset comes in, then chipset-dependent devices
      re-enumerate and get caught).
+
+  Q: Some devices (BT peripherals, System Telemetry) still show yellow
+     after a successful run.
+  A: BT peripherals often need a reboot + re-pair before they finish
+     enumerating. System Telemetry tends to be downstream of a Surface
+     SMF / chipset driver -- those clear on the second run once the
+     prereq is in. Reboot, re-run, check Phase 5 again.
+
+  Q: pnputil complains about signature on a package PULL_DRIVERS just
+     copied.
+  A: The source tree was probably just a .inf with no companions.
+     PULL_DRIVERS copies whole folders to avoid this -- but if the
+     share is laid out with INFs and binaries in separate trees you'll
+     need to extract a proper driver package (msiexec /a) before
+     pulling.
+
